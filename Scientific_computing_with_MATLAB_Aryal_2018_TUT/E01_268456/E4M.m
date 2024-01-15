@@ -1,0 +1,11 @@
+% Name = Mukesh Aryal
+% Student No.= 268456
+P=ones(9);
+P(2:8,2:8)=zeros(7);
+t4a=P
+A=pascal(3)
+I=eye(4)
+B=I(1:3,:)
+C=I(:,end-2:end)
+D=magic(4)
+t4b=[A B; C D]
