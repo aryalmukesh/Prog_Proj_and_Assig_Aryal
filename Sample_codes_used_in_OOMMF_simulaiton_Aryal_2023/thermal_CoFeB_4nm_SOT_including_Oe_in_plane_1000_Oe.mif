@@ -1,0 +1,238 @@
+# MIF 2.1
+# Description: Hysteresis loop at room temperature including oersted field. 
+
+set pi [expr {4*atan(1.0)}]
+set mu0 [expr {4*$pi*1e-7}]
+
+# Parameter for the output directory. Essential while using boxsi and python script. 
+Parameter out_folder default
+Parameter init_sim 1
+Parameter in_omf thermal_CoFeB_4nm_B0_relaxed.omf
+Parameter total_current 1; # the magnitude is later multiplied by conversion factor and assigned to new variable current  
+set current [expr {$total_current*1e-6}]; # current in uA. 
+
+# Dimensions of SOT metal (Tungsten)
+set cond_width 30e-9
+set cond_thick 5e-9
+set cond_length 150e-9
+
+
+set current_area [expr { $cond_width * $cond_thick }]; # cross section of Hall bar
+set Jcurr [expr {$current/$current_area}];	# current density
+
+
+# Seed and time steps parameters
+Parameter seed 23446;
+eval RandomSeed $seed
+set time_steps 2e-14
+set Temp 298
+
+# Material Parameter (CoFeB)#
+Parameter Ms 9.57e5; 				
+# Saturation Magnetization (unit:A/m)
+Parameter A 13e-12;				
+# Exchange Coefficient (Stiffness) (unit:J/m)
+Parameter Polarization -0.33;	
+# Spin orbit torque efficiency for Tungsten
+Parameter Lambda 1
+Parameter alpha 0.01;			
+# Damping parameter
+
+
+# Initial magnetization
+set init_mag {{0.5 0.5 0.5}};	
+# Only used for initial relaxation simulation, later replaced by the magnetization state of preceding simulation.
+set cellsize 1.0e-9
+
+
+# Parameters for oersted field 
+set a [expr { $cond_width/2 }]
+set b [expr { $cond_thick/2 }]
+set yscale 1
+set zscale 1
+set yshift -50e-9
+set zshift 0
+set C1 [expr {$current/(8*$pi*$a*$b)}]
+
+
+# Setting a formatting string to prepend it to output to prevent the output data from being over-written
+set outname [format "%s/thermal_CoFeB_4nm_with_Oe_J%.0f" $out_folder $total_current]
+
+# Defining different sections of the Hall bar. 
+Specify Oxs_BoxAtlas:MainBody_left [subst {
+	xrange {0 50e-9}
+	yrange {35e-9 65e-9}
+	zrange {0 4e-9}
+}]
+
+Specify Oxs_BoxAtlas:MainBody_center [subst {
+	xrange {50e-9 100e-9}
+	yrange {35e-9 65e-9}
+	zrange {0 4e-9}
+}]
+
+Specify Oxs_BoxAtlas:MainBody_right [subst {
+	xrange {100e-9 150e-9}
+	yrange {35e-9 65e-9}
+	zrange {0 4e-9}
+}]
+
+Specify Oxs_BoxAtlas:Up_Volt_arm [subst {
+	xrange {70e-9 80e-9}
+	yrange {65e-9 100e-9}
+	zrange {0 4e-9}
+}]
+
+Specify Oxs_BoxAtlas:Down_Volt_arm [subst {
+	xrange {70e-9 80e-9}
+	yrange {0 35e-9}
+	zrange {0 4e-9}
+}]
+
+# Gathering mainbody sections
+Specify Oxs_MultiAtlas:MainBody [subst {
+	atlas MainBody_left
+	atlas MainBody_center
+	atlas MainBody_right
+}]
+
+# Putting all components together
+Specify Oxs_MultiAtlas:atlas [subst {
+	atlas MainBody
+	atlas Up_Volt_arm
+	atlas Down_Volt_arm
+}]
+
+
+# Mesh Specification
+Specify Oxs_RectangularMesh:mesh [subst {
+	cellsize { [expr {2*$cellsize}] [expr {2*$cellsize}] [expr {2*$cellsize}] }
+	atlas :atlas
+}]
+
+
+# Anisotropy field (Ha) used to assign uniaxial anisotropy
+Specify Oxs_UniaxialAnisotropy:PMA [subst {
+	Ha 	[expr {11000*1e-4/$mu0}]
+	axis {0 0 1}
+}]
+
+
+Specify Oxs_UniformExchange [subst {
+   A  $A
+}]
+
+# Oersted field from the underlying conductor
+proc field_from_wire {xrel yrel zrel} {
+	global a
+	global b
+	global yscale
+	global zscale
+	global yshift
+	global zshift
+	global C1
+	set T1 [expr {
+		0.5*log((pow(($b-($zrel+$zshift)*$zscale),2) + pow(($a-($yrel+$yshift)*$yscale),2))/(pow((-$b-($zrel+$zshift)*$zscale),2) + pow(($a-($yrel+$yshift)*$yscale),2))) + (($b-($zrel+$zshift)*$zscale)/($a-($yrel+$yshift)*$yscale))*atan(($a-($yrel+$yshift)*$yscale)/($b-($zrel+$zshift)*$zscale))-((-$b-($zrel+$zshift)*$zscale)/($a-($yrel+$yshift)*$yscale))*atan(($a-($yrel+$yshift)*$yscale)/(-$b-($zrel+$zshift)*$zscale))
+	}]
+	set T2 [expr {
+		0.5*log((pow(($b-($zrel+$zshift)*$zscale),2) + pow((-$a-($yrel+$yshift)*$yscale),2))/(pow((-$b-($zrel+$zshift)*$zscale),2) + pow((-$a-($yrel+$yshift)*$yscale),2))) + (($b-($zrel+$zshift)*$zscale)/(-$a-($yrel+$yshift)*$yscale))*atan((-$a-($yrel+$yshift)*$yscale)/($b-($zrel+$zshift)*$zscale))-((-$b-($zrel+$zshift)*$zscale)/(-$a-($yrel+$yshift)*$yscale))*atan((-$a-($yrel+$yshift)*$yscale)/(-$b-($zrel+$zshift)*$zscale))
+	}]
+	set Hy [expr {
+		$C1*(($a-($yrel+$yshift))*$T1 + ($a+($yrel+$yshift))*$T2)
+	}]
+	
+	set T3 [expr {
+		0.5*log((pow(($b-($zrel+$zshift)*$zscale),2) + pow(($a-($yrel+$yshift)*$yscale),2))/(pow(($b-($zrel+$zshift)*$zscale),2) + pow((-$a-($yrel+$yshift)*$yscale),2))) + (($a-($yrel+$yshift)*$yscale)/($b-($zrel+$zshift)*$zscale))*atan(($b-($zrel+$zshift)*$zscale)/($a-($yrel+$yshift)*$yscale))-((-$a-($yrel+$yshift)*$yscale)/($b-($zrel+$zshift)*$zscale))*atan(($b-($zrel+$zshift)*$zscale)/(-$a-($yrel+$yshift)*$yscale))
+	}]
+	set T4 [expr {
+		0.5*log((pow((-$b-($zrel+$zshift)*$zscale),2) + pow(($a-($yrel+$yshift)*$yscale),2))/(pow((-$b-($zrel+$zshift)*$zscale),2) + pow((-$a-($yrel+$yshift)*$yscale),2))) + (($a-($yrel+$yshift)*$yscale)/(-$b-($zrel+$zshift)*$zscale))*atan((-$b-($zrel+$zshift)*$zscale)/($a-($yrel+$yshift)*$yscale))-((-$a-($yrel+$yshift)*$yscale)/(-$b-($zrel+$zshift)*$zscale))*atan((-$b-($zrel+$zshift)*$zscale)/(-$a-($yrel+$yshift)*$yscale))
+	}]
+	set Hz [expr {
+		-$C1*(($b-($zrel+$zshift))*$T3 + ($b+($zrel+$zshift))*$T4)
+	}]
+	
+	set Hx [expr {0}]
+	
+	if {$yrel < 35e-9} { 
+	 return [list 0 0 0]
+	}
+	if {$yrel > 65e-9} { 
+	 return [list 0 0 0]
+	}
+	
+	return [list $Hx $Hy $Hz]
+}
+
+Specify Oxs_ScriptVectorField:Oe_field {
+	script field_from_wire
+	script_args {rawpt} 
+	norm 1
+	atlas :atlas
+}
+
+Specify Oxs_FixedZeeman:Oersted_final {
+	field Oe_field
+	multiplier 1
+}
+
+# External field is in 1G(1mT = 10G) with converstion factor 1e-4/mu0.
+Specify Oxs_FixedZeeman:Ext_field [subst {
+	field {1000 0 0}
+	multiplier [expr {1e-4/$mu0}]
+}]
+
+Specify Oxs_Demag {}
+
+# Evolver
+# Direction of spin torque given by (comp_1:electric field (due to current)) cross_prod (comp_2:surface normal). 
+Specify Xf_ThermSpinXferEvolve:evolve [subst {
+	alpha $alpha
+	J {Oxs_ScriptScalarField {
+		script {J_dist $Jcurr}
+		script_args { rawpt }
+		atlas :atlas
+	} }
+	mp {0 -1 0}
+	P $Polarization
+	Lambda $Lambda
+	temperature $Temp
+	uniform_seed $seed
+	min_timestep $time_steps
+}]
+
+
+Specify Oxs_TimeDriver [subst {
+		 basename $outname
+		 evolver :evolve
+		 mesh :mesh
+		 Ms { Oxs_AtlasScalarField {
+		 atlas :atlas
+		 default_value $Ms
+		 values {
+		   universe 0.0
+		 }}}
+		 m0 { Oxs_FileVectorField {
+			atlas :atlas
+			file $in_omf
+		 }}
+		 stopping_time 5e-9
+	}]
+
+# Spatial current distribution to prevent current flow in voltage arms. 	
+proc J_dist { Jcurr xrel yrel zrel } {
+  	if {$yrel < 35e-9 || $yrel > 65e-9} { 
+	 return 0
+	}
+	return $Jcurr
+}	
+
+# Setting the outputs for visualization
+Destination my_graph mmGraph
+Destination my_archive mmArchive
+Destination my_display mmDisp
+ 
+# Sending the data to the visuals and saving them. 
+Schedule DataTable my_graph Step 1
+Schedule DataTable my_archive Stage 1
+Schedule Oxs_TimeDriver::Magnetization my_archive Stage 1
+Schedule Oxs_TimeDriver::Magnetization my_display Step 1
