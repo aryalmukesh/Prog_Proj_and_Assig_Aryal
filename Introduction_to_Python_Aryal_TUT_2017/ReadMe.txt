@@ -1,0 +1,1 @@
+Projects for the introductory course on programming with Python, 2017, Tampere University of Technology (TUT). 

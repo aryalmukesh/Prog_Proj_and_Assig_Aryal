@@ -1,0 +1,1 @@
+Projects and assignments of Machine learning for Physics and Astronomy, 2022, University of Victoria. 

@@ -1,0 +1,1 @@
+Custom interface used in the automation and configuration of the experimental setup for Master's thesis project. 
